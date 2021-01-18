@@ -4,7 +4,7 @@ description: A starting point for Dart libraries or applications.
 # homepage: https://www.example.com
 
 environment:
-  sdk: '2.12.0-133.2.beta'
+  sdk: '2.12.0-133.7.beta'
 
 #dependencies:
 #  path: ^1.7.0

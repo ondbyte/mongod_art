@@ -1,89 +1,78 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:mongod_art/src/std_listener.dart';
+import 'std_listener.dart';
+
+class MongoShellException implements Exception {
+  final String message;
+
+  MongoShellException(this.message);
+}
 
 class MongoDB {
-  Process? _shell;
-  Std? _stdListener;
+  late ProcessController _processController;
 
   Future init(MongoConnectionData data) async {
-    if (data.isDefaultConnectionData()) {
-      _shell = await _initLocalProcess();
-      print("new mongo shell for local started started");
-    } else {
-      final process = await _initFarProcess(data);
-      if(process is Process){
-        _stdListener = Std(process);
-      }
+    try {
+      var executable = _executableString(data);
+      _processController = await ProcessController.start(
+        executable.key,
+        executable.value,
+        firstWords: (words) {},
+      );
+    } catch (e) {
+      throw MongoShellException("cannot start mongo shell");
     }
   }
 
-  Future<bool> get cooleDown{
-    return _stdListener?.coolDown ?? Future.value(false);
+  Future<bool> get coolDown {
+    return _processController?.coolDown ?? Future.value(false);
   }
 
-  Future<Map<dynamic,dynamic>> sample({String collection = "collection",int size = 2}) async {
-    final responseToAwait = _stdListener?.listenForOut;
+  Future<Map<dynamic, dynamic>> sample(
+      {String collection = "collection", int size = 2}) async {
+    final responseToAwait = _processController?.listenForOut;
     final sampleMap = {
-      "\$sample":{
-        "size":size
-      }
+      "\$sample": {"size": size}
     };
     final queryString = "db.$collection.aggregate([${sampleMap.toString()}])";
-    _stdListener?.write(queryString);
+    _processController?.write(queryString);
     final response = await responseToAwait;
     final map = jsonDecode(response ?? "{}");
-    if(map is Map){
+    if (map is Map) {
       return map;
     }
     return {};
   }
 
-  Future<Process?> _initFarProcess(MongoConnectionData data) async {
-    try {
-      final process = await Process.start("mongo", [
-        "--username",
-        data.userName,
-        "--password",
-        data.passWord,
-        "--authenticationDatabase",
-        data.authenticationDataBase,
-        "--host",
-        data.host,
-        "--port",
-        data.port,
-      ]);
-      return process;
-    } on ProcessException catch (e) {
-      final error =
-          "unable to connect through mongo shell, exact error was\n$e";
-      kill(m: error);
-    } catch (e) {
-      kill();
-    }
+  MapEntry<String, List<String>> _executableString(MongoConnectionData data) {
+    // ignore: omit_local_variable_types
+    final List<String> args = data.isDefaultConnectionData()
+        ? []
+        : [
+            "--username",
+            data.userName,
+            "--password",
+            data.passWord,
+            "--authenticationDatabase",
+            data.authenticationDataBase,
+            "--host",
+            data.host,
+            "--port",
+            data.port,
+          ];
+    return MapEntry("mongo", args);
   }
 
-  Future<Process?> _initLocalProcess() async {
-    try {
-      final process = await Process.start("mongo", []);
-      return process;
-    } on ProcessException catch (e) {
-      kill(
-        m: "mongo shell does not exist on path, please add it to path variable",
-      );
-    } catch (e) {
-      kill();
-    }
-  }
-
-  void kill({String m=""}) {
+  void kill({String m = ""}) {
     if (m.isEmpty) {
       print(m);
     } else {
       print("exit");
     }
-    _shell?.kill();
+    if (!(_processController?.kill() ?? true)) {
+      print("unable kill process by process controller");
+    }
     exit(0);
   }
 }

@@ -12,3 +12,7 @@ include: package:pedantic/analysis_options.yaml
 analyzer:
 #   exclude:
 #     - path/to/excluded/files/**
+linter:
+  rules:
+    prefer_double_quotes: false
+    prefer_single_quotes: false
