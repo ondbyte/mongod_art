@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -10,7 +11,9 @@ class MongoShellException implements Exception {
 }
 
 class MongoDB {
-  late ProcessController _processController;
+  late final ProcessController _processController;
+  late final String sessionId;
+  final _sessionActive = Completer<bool>();
 
   Future init(MongoConnectionData data) async {
     try {
@@ -18,27 +21,50 @@ class MongoDB {
       _processController = await ProcessController.start(
         executable.key,
         executable.value,
-        firstWords: (words) {},
+        firstWords: (words) {
+          final _sid = _exctractSessionId(words);
+          if (_sid.isNotEmpty) {
+            Future.delayed(
+              const Duration(seconds: 1),
+              () {
+                print("mongo shell session is active, session id: $_sid");
+                _processController.stopListeningOut();
+                sessionId = _sid;
+                _sessionActive.complete(true);
+              },
+            );
+          }
+        },
       );
     } catch (e) {
       throw MongoShellException("cannot start mongo shell");
     }
   }
 
-  Future<bool> get coolDown {
-    return _processController?.coolDown ?? Future.value(false);
+  String _exctractSessionId(String s) {
+    final regex = RegExp(
+        r'[0-9a-fA-F]{8}\-[0-9a-fA-F]{4}\-[0-9a-fA-F]{4}\-[0-9a-fA-F]{4}\-[0-9a-fA-F]{12}');
+    if (s.isEmpty) {
+      return "";
+    }
+    return regex.stringMatch(s) ?? "";
   }
+
+  Future<bool> get sessionActive => _sessionActive.future;
 
   Future<Map<dynamic, dynamic>> sample(
       {String collection = "collection", int size = 2}) async {
-    final responseToAwait = _processController?.listenForOut;
+    final responseToAwait = _processController.listenForOut();
     final sampleMap = {
       "\$sample": {"size": size}
     };
-    final queryString = "db.$collection.aggregate([${sampleMap.toString()}])";
-    _processController?.write(queryString);
+    final queryString = "JSON.stringify(db.$collection.aggregate([${sampleMap.toString()}]))\n";
+    _processController.write(queryString);
     final response = await responseToAwait;
-    final map = jsonDecode(response ?? "{}");
+    if(response == ProcessController.listenForOutErr){
+      return {};
+    }
+    final map = jsonDecode(response);
     if (map is Map) {
       return map;
     }
@@ -70,7 +96,7 @@ class MongoDB {
     } else {
       print("exit");
     }
-    if (!(_processController?.kill() ?? true)) {
+    if (!(_processController.kill())) {
       print("unable kill process by process controller");
     }
     exit(0);

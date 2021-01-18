@@ -4,13 +4,11 @@ import 'dart:io';
 
 typedef StringListener = void Function(String);
 
-const listenerError = "listener_error";
-
 class ProcessController {
-  Process _process;
+  static const listenForOutErr = "listener_error";
+  final Process _process;
   late final StreamSubscription<String> _stdErrSub, _stdOutSub;
   bool dead = false;
-  final _cooledDown = Completer<bool>();
 
   ProcessController._init(this._process, {Function(String)? firstWords}) {
     try {
@@ -31,6 +29,14 @@ class ProcessController {
     }
   }
 
+  void stopListeningOut() {
+    _stdOutSub.onData(null);
+  }
+
+  void stopListeningErr() {
+    _stdErrSub.onData(null);
+  }
+
   static Future<ProcessController> start(
     String executable,
     List<String> arguments, {
@@ -44,8 +50,6 @@ class ProcessController {
     }
   }
 
-  Future<bool> get coolDown => _cooledDown.future;
-
   void write(String s) async {
     _process.stdin.write(s);
   }
@@ -53,14 +57,14 @@ class ProcessController {
   Future<String> get listenForErr {
     final completer = Completer<String>();
     if (dead) {
-      completer.complete(listenerError);
+      completer.complete(listenForOutErr);
     } else {
       if (_stdErrSub != null) {
         _stdErrSub.onData((data) {
           completer.complete(data);
         });
       } else {
-        completer.complete(listenerError);
+        completer.complete(listenForOutErr);
       }
     }
     return completer.future;
@@ -70,7 +74,7 @@ class ProcessController {
       {Duration timeOut = const Duration(seconds: 4)}) async {
     final completer = Completer<String>();
     if (dead) {
-      completer.complete(listenerError);
+      completer.complete(listenForOutErr);
     } else {
       _stdOutSub.onData(
         (data) {
@@ -79,8 +83,14 @@ class ProcessController {
         },
       );
     }
-    final resolved =
-        await completer.future.timeout(timeOut, onTimeout: () => listenForErr);
+    final resolved = await completer.future.timeout(
+      timeOut,
+      onTimeout: () {
+        completer.complete(listenForOutErr);
+        return completer.future;
+      },
+    );
+    _stdOutSub.onData(null);
     return resolved;
   }
 

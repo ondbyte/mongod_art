@@ -10,10 +10,8 @@ void main() async {
     passWord: "dG6Es3zoza102o04",
   ); */
   await m.init(MongoConnectionData.defaultConnectionData());
-  print("checking cool down");
   try {
-    if (false) {
-      print("cooled down");
+    if (await m.sessionActive) {
       final response = await m.sample();
       print(response);
     } else {

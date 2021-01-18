@@ -1,11 +1,10 @@
 import 'package:mongod_art/mongod_art.dart';
+import 'package:mongod_art/src/std_listener.dart';
 import 'package:test/test.dart';
-
-import '../lib/src/std_listener.dart';
 
 void main() {
   group('A group of tests', () {
-    Std awesome;
+    ProcessController awesome;
 
     setUp(() {});
 
